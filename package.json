@@ -1,0 +1,8 @@
+{
+  "name": "nak-tp-bindwin-poc",
+  "version": "1.0.1",
+  "description": "self-owned binding-window trusted-publishing PoC for a security paper - benign marker, no payload",
+  "main": "index.js",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/nak-bindwin-lab/demo.git" }
+}

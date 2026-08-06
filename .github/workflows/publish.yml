@@ -1,0 +1,50 @@
+name: publish
+on:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: versions + OIDC env presence
+        run: |
+          node -v && npm -v
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL set?   ${ACTIONS_ID_TOKEN_REQUEST_URL:+YES}"
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN set? ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+YES}"
+
+      - name: print the OIDC identity claims npm will match against
+        run: |
+          set +e
+          RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL")
+          echo "$RESP" | node -e '
+            let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+              try{
+                const t=JSON.parse(d).value;
+                const p=JSON.parse(Buffer.from(t.split(".")[1],"base64url").toString());
+                console.log("=== OIDC identity GitHub is minting (compare to npm Trusted Publisher config) ===");
+                console.log("sub                  :", p.sub);
+                console.log("repository           :", p.repository);
+                console.log("repository_owner     :", p.repository_owner);
+                console.log("repository_owner_id  :", p.repository_owner_id);
+                console.log("repository_id        :", p.repository_id);
+                console.log("workflow_ref         :", p.workflow_ref);
+                console.log("event_name           :", p.event_name);
+              }catch(e){console.log("could not decode id-token claims:", e.message)}
+            });'
+
+      - name: strip empty _authToken so npm uses OIDC trusted publishing
+        run: |
+          sed -i '/_authToken/d;/always-auth/d' "$NPM_CONFIG_USERCONFIG" || true
+          grep -q '^registry=' "$NPM_CONFIG_USERCONFIG" || echo "registry=https://registry.npmjs.org/" >> "$NPM_CONFIG_USERCONFIG"
+          echo "--- .npmrc after fix ---"; cat "$NPM_CONFIG_USERCONFIG"
+
+      - name: publish (verbose — shows the OIDC exchange 201 and the PUT 200, or the 404)
+        run: npm publish --provenance --access public --loglevel=silly
